@@ -39,9 +39,12 @@ async function start() {
   child.stderr.on("data", (v) => {
     logs += v;
   });
-  for (let i = 0; i < 100; i++) {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
     try {
-      const r = await fetch("http://127.0.0.1:3099/api/me");
+      const r = await fetch("http://127.0.0.1:3099/api/me", {
+        signal: AbortSignal.timeout(2000),
+      });
       if (r.status === 401) return;
     } catch {
       /* Server is still starting. */
