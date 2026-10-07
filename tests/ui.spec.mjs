@@ -4,8 +4,208 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../server/store.mjs";
 import { createApp } from "../server/app.mjs";
+import { configureFinalEvent } from "../server/configure-event.mjs";
+
+test("official event browser: eight team slots, free kit, robot selection, LAN request keys, purchase and trade", async ({
+  page,
+}) => {
+  const admin = store.get("SELECT * FROM operators WHERE username='admin'");
+  configureFinalEvent(store, admin);
+  store.saveTeam(
+    admin,
+    { ...store.teamDetails("T01"), project: "Obstacle Avoidance Robot" },
+    "T01",
+  );
+  store.saveTeam(
+    admin,
+    { ...store.teamDetails("T02"), project: "Line Follower Robot" },
+    "T02",
+  );
+  const errors = [],
+    external = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.route("**/*", (route) => {
+    if (new URL(route.request().url()).hostname !== "127.0.0.1") {
+      external.push(route.request().url());
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await page.addInitScript(() =>
+    Object.defineProperty(crypto, "randomUUID", { value: undefined }),
+  );
+  await page.goto(url);
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("browser-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText(/8 team slots/)).toBeVisible();
+  await expect(page.getByText(/1000 RAS Bolts \/ team/)).toBeVisible();
+  await page.getByRole("button", { name: "Teams", exact: true }).click();
+  for (let i = 3; i <= 8; i++) {
+    await page.getByRole("button", { name: "+ Add team", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("ID *", { exact: true }).fill(`B${i}`);
+    await dialog
+      .getByLabel("Name *", { exact: true })
+      .fill(`Browser Team ${i}`);
+    await dialog.getByLabel(/^Members/).fill("One\nTwo\nThree\nFour\nFive");
+    await dialog
+      .getByLabel("Assigned robot", { exact: true })
+      .selectOption(
+        [
+          "Obstacle Avoidance Robot",
+          "Line Follower Robot",
+          "Light Follower Robot",
+          "Bluetooth Controlled Car",
+          "Clap Detector Robot",
+          "Radar Car",
+        ][i - 3],
+      );
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(store.balance(`B${i}`)).toBe(1000);
+    expect(store.stock("ARDUINO_UNO", `B${i}`)).toBe(1);
+    expect(store.stock("WHEELS_TYRES", `B${i}`)).toBe(2);
+  }
+  expect(store.get("SELECT COUNT(*) n FROM teams").n).toBe(8);
+  await page.getByRole("button", { name: "T02", exact: true }).click();
+  await expect(
+    page.getByRole("columnheader", { name: "Still required" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Assign Mentor Mitra", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("Mentor Mitra", { exact: true })
+    .selectOption("M01");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Start competition", exact: true })
+    .click();
+  await page.getByRole("button", { name: "+ New purchase" }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Purchasing team", { exact: true })
+    .selectOption("T01");
+  await dialog
+    .getByLabel("Component", { exact: true })
+    .selectOption("DC_GEARED_MOTOR");
+  expect(
+    await dialog
+      .getByLabel("Component", { exact: true })
+      .locator("option")
+      .allTextContents(),
+  ).not.toContain("Jumper wires");
+  await dialog.getByLabel("Quantity", { exact: true }).fill("2");
+  await dialog
+    .getByRole("button", { name: "Review purchase", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Confirm purchase", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  expect(store.balance("T01")).toBe(800);
+  await page.getByRole("button", { name: "+ New trade" }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Team A", { exact: true }).selectOption("T01");
+  await dialog.getByLabel("Team B", { exact: true }).selectOption("T02");
+  await dialog
+    .getByRole("button", { name: "+ Add outgoing item" })
+    .first()
+    .click();
+  await dialog
+    .getByLabel("Outgoing item", { exact: true })
+    .selectOption("DC_GEARED_MOTOR");
+  await dialog.getByLabel("RAS Bolts", { exact: true }).nth(1).fill("150");
+  await dialog
+    .getByRole("button", { name: "Review trade", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Confirm trade", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  expect(store.balance("T01")).toBe(950);
+  expect(store.balance("T02")).toBe(850);
+  expect(store.stock("DC_GEARED_MOTOR")).toBe(14);
+  await page
+    .getByRole("button", { name: "Pause [Space]", exact: true })
+    .click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Resume [Space]", exact: true }),
+  ).toBeVisible();
+  for (const name of [
+    "Teams",
+    "Mentor Mitras",
+    "Shop",
+    "Inventory",
+    "Purchases",
+    "Trades",
+    "Ledger",
+    "Audit Log",
+    "Reports",
+    "Settings",
+  ]) {
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name, exact: true })
+      .click();
+    await expect(page.locator("h1")).toBeVisible();
+  }
+  expect(errors).toEqual([]);
+  expect(external).toEqual([]);
+});
 
 let store, server, dir, url;
+test("admin creates a team login and the team signs in to its own dashboard", async ({
+  page,
+}) => {
+  await page.goto(url);
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("browser-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "T01", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel(/^Team username/)
+    .fill("rebels");
+  await page
+    .getByRole("dialog")
+    .getByLabel(/^Password/)
+    .fill("team-password-123");
+  await page.getByRole("button", { name: "Save team login" }).click();
+  await expect(
+    page.getByRole("cell", { name: "rebels", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Sign out/i }).click();
+  await page.getByLabel("Sign in as").selectOption("team");
+  await page.getByLabel("Username", { exact: true }).fill("rebels");
+  await page.getByLabel("Password", { exact: true }).fill("team-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Robo Rebels" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "100 RAS Bolts" }),
+  ).toBeVisible();
+  await expect(page.getByText("Circuit Breakers")).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Your inventory", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(
+    page.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+});
 test.beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "ras-ui-"));
   store = new Store(join(dir, "event.sqlite"), {

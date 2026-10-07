@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TeamAccounts } from "./team-accounts";
 import { api, download, type Bootstrap, type Operator, type Row } from "./api";
 import { EntityForm, Table, type Field } from "./ui";
 export function CsvExport({ onError }: { onError: (error: string) => void }) {
@@ -63,6 +64,10 @@ export function Settings({
     [restoring, setRestoring] = useState(false),
     [backupBusy, setBackupBusy] = useState(false);
   const configFields: Field[] = [
+    { key: "organizer", label: "Organizer", required: true },
+    { key: "venue", label: "Venue", required: true },
+    { key: "participants", label: "Participants", type: "number", min: 1 },
+    { key: "teamSize", label: "Members per team", type: "number", min: 1 },
     { key: "eventName", label: "Event name", required: true },
     { key: "eventDate", label: "Event date", type: "date", required: true },
     {
@@ -111,6 +116,11 @@ export function Settings({
           "Actual initial RAS Bolts allocation confirmed",
         ],
         ["rulesConfirmed", "Competition rules verified with organizers"],
+        [
+          "starterAllocationEnabled",
+          "Automatically allocate free starter kit to each team",
+        ],
+        ["enforceProjectPurchases", "Enforce Project Component Purchase Rules"],
         ["allowBoltTransfer", "Allow team-to-team RAS Bolt transfer"],
         ["allowItemTrading", "Allow item trading"],
         ["allowItemForBolts", "Allow item-for-RAS Bolts"],
@@ -125,6 +135,7 @@ export function Settings({
   ];
   return (
     <>
+      <TeamAccounts teams={data.teams} />
       <section className="card">
         <h2>Event configuration & rules</h2>
         <p className="subtle">
@@ -160,9 +171,15 @@ export function Settings({
                 const result = await api<Row>("/integrity");
                 if (
                   result.integrity !== "ok" ||
-                  ["foreignKeys", "ledgerErrors", "inventoryErrors"].some(
-                    (key) => (result[key] as unknown[]).length,
-                  )
+                  [
+                    "foreignKeys",
+                    "ledgerErrors",
+                    "inventoryErrors",
+                    "negativeTeamInventory",
+                    "negativeMarketInventory",
+                    "negativeBalances",
+                    "duplicateActiveComponents",
+                  ].some((key) => (result[key] as unknown[]).length)
                 )
                   throw new Error(
                     "Database integrity check reported an inconsistency. Stop transactions and inspect a backup.",

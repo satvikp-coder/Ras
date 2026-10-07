@@ -1,4 +1,5 @@
 import { DatabaseSync, backup } from "node:sqlite";
+import { STARTERS, PROJECTS, isMarket, canTrade } from "./event-rules.mjs";
 import {
   readFileSync,
   mkdirSync,
@@ -66,13 +67,20 @@ export const checkPassword = (password, hash) => {
 export const tokenHash = (token) =>
   createHash("sha256").update(token).digest("hex");
 export const defaultConfig = {
-  eventName: "Robots of the Backstreet",
+  eventName: "ROBOTS OF THE BACKSTREET",
+  organizer:
+    "IEEE Robotics & Automation Society — Ahmedabad University Student Branch",
+  venue: "GICT 105, Ahmedabad University",
+  participants: 40,
+  teamSize: 5,
+  starterAllocationEnabled: false,
+  enforceProjectPurchases: false,
   eventDate: "2026-10-07",
   startTime: "15:00",
   endTime: "16:30",
   durationMinutes: 90,
   currencyName: "RAS Bolts",
-  initialBolts: 0,
+  initialBolts: 1000,
   allocationConfirmed: false,
   rulesConfirmed: false,
   teamLimit: null,
@@ -108,18 +116,26 @@ export class Store {
           "Existing database has no compatible schema version. Choose a new DB_PATH or restore a valid backup.",
         );
       }
-      if (versions.length !== 1 || versions[0].version !== 1) {
+      if (versions.length !== 1 || ![1, 2].includes(versions[0].version)) {
         this.close();
         throw new Error(
           "Unsupported database schema version. The existing database was not modified.",
         );
+      }
+      if (versions[0].version === 1) {
+        this.atomic(() => {
+          this.db.exec("DROP TABLE schema_version");
+          this.db.exec(
+            readFileSync(new URL("./schema.sql", import.meta.url), "utf8"),
+          );
+        });
       }
     }
     this.db.exec(
       readFileSync(new URL("./schema.sql", import.meta.url), "utf8"),
     );
     const version = this.get("SELECT version FROM schema_version");
-    if (version.version !== 1) throw new Error("Unsupported schema version");
+    if (version.version !== 2) throw new Error("Unsupported schema version");
     if (!this.get("SELECT id FROM config"))
       this.run("INSERT INTO config VALUES(1,?)", JSON.stringify(defaultConfig));
     if (!this.get("SELECT id FROM operators")) {
@@ -172,7 +188,10 @@ export class Store {
     }
   }
   config() {
-    return JSON.parse(this.get("SELECT value FROM config WHERE id=1").value);
+    return {
+      ...defaultConfig,
+      ...JSON.parse(this.get("SELECT value FROM config WHERE id=1").value),
+    };
   }
   audit(
     operator,
@@ -336,7 +355,14 @@ export class Store {
     return this.atomic(() => {
       const old = this.config();
       const next = { ...old };
-      for (const key of ["eventName", "eventDate", "startTime", "endTime"])
+      for (const key of [
+        "eventName",
+        "eventDate",
+        "startTime",
+        "endTime",
+        "organizer",
+        "venue",
+      ])
         if (key in input) next[key] = string(input[key], key, 120);
       if (
         !/^\d{4}-\d{2}-\d{2}$/.test(next.eventDate) ||
@@ -354,6 +380,8 @@ export class Store {
             key === "durationMinutes" ? 1 : 0,
             key === "durationMinutes" ? 1440 : 1000000000,
           );
+      for (const key of ["participants", "teamSize"])
+        if (key in input) next[key] = integer(input[key], key, 1, 1000);
       for (const key of ["teamLimit", "maximumPurchaseQuantity"])
         if (key in input)
           next[key] = input[key] === null ? null : integer(input[key], key, 1);
@@ -529,7 +557,9 @@ export class Store {
           now(),
         );
         const amount = integer(
-          input.initialBolts ?? c.initialBolts,
+          c.starterAllocationEnabled
+            ? c.initialBolts
+            : (input.initialBolts ?? c.initialBolts),
           "Initial RAS Bolts",
         );
         if (!c.allocationConfirmed)
@@ -547,6 +577,8 @@ export class Store {
           { gated: false },
         );
       }
+      if (this.config().starterAllocationEnabled)
+        this.allocateStarters(operator, teamId);
       this.run("DELETE FROM members WHERE team_id=?", teamId);
       for (const member of members)
         this.run(
@@ -574,6 +606,35 @@ export class Store {
       );
       return this.teamDetails(teamId);
     });
+  }
+  allocateStarters(operator, teamId) {
+    this.requireAdmin(operator);
+    this.team(teamId);
+    const existing = this.get(
+      "SELECT * FROM transactions WHERE request_key=?",
+      `starter-allocation-${teamId}`,
+    );
+    if (existing) return existing;
+    return this.transaction(
+      operator,
+      "INVENTORY_ADJUSTMENT",
+      {
+        requestKey: `starter-allocation-${teamId}`,
+        notes:
+          "STARTER_ALLOCATION — free starter kit; no market movement or RAS Bolt debit",
+      },
+      (txn) => {
+        for (const item of STARTERS) {
+          const component = this.component(item.id);
+          if (component.category !== "Starter")
+            throw new AppError(
+              "Starter component configuration is missing or invalid.",
+            );
+          this.movement(txn, item.id, teamId, item.quantity);
+        }
+      },
+      { gated: false },
+    );
   }
   saveMitra(operator, input, id = null) {
     this.requireAdmin(operator);
@@ -709,6 +770,40 @@ export class Store {
       const team = this.team(input.teamId, true);
       const item = this.component(input.componentId, true);
       const quantity = integer(input.quantity, "Quantity", 1);
+      if (!isMarket(item))
+        throw new AppError(
+          "This component is a starter or workshop resource, not a market purchase.",
+        );
+      if (this.config().enforceProjectPurchases) {
+        const project = PROJECTS.find((p) => p.name === team.project);
+        const required = project?.requirements[item.id] ?? 0;
+        const alreadyPurchased = this.get(
+          "SELECT COALESCE(SUM(p.quantity),0) n FROM purchases p JOIN transactions t ON t.id=p.transaction_id WHERE p.team_id=? AND p.component_id=? AND t.status='COMPLETED'",
+          team.id,
+          item.id,
+        ).n;
+        if (!project || !required || alreadyPurchased + quantity > required) {
+          if (!input.approvalReason)
+            throw new AppError(
+              "Project purchase rule: assign the robot and buy only its required quantities, or obtain an Admin strategic acquisition approval.",
+            );
+          this.requireAdmin(operator);
+          string(
+            input.approvalReason,
+            "Strategic acquisition approval reason",
+            500,
+          );
+          this.audit(
+            operator,
+            "STRATEGIC_PURCHASE_APPROVAL",
+            "transaction",
+            txn.ref,
+            null,
+            { teamId: team.id, componentId: item.id, quantity },
+            input.approvalReason,
+          );
+        }
+      }
       const c = this.config();
       if (c.maximumPurchaseQuantity && quantity > c.maximumPurchaseQuantity)
         throw new AppError("Maximum purchase quantity exceeded.");
@@ -766,7 +861,10 @@ export class Store {
           throw new AppError("Invalid trade items.");
         const seen = new Set();
         return items.map((item) => {
-          this.component(item.componentId);
+          if (!canTrade(this.component(item.componentId)))
+            throw new AppError(
+              "Workshop, reference or inactive components cannot be traded.",
+            );
           if (seen.has(item.componentId))
             throw new AppError("Combine duplicate components into one line.");
           seen.add(item.componentId);
@@ -1016,6 +1114,77 @@ export class Store {
       ).n,
     };
   }
+  teamAccounts() {
+    return this.all(
+      "SELECT team_id,username,active FROM team_accounts ORDER BY team_id",
+    );
+  }
+  saveTeamAccount(operator, teamId, input) {
+    this.requireAdmin(operator);
+    this.team(teamId);
+    return this.atomic(() => {
+      const old = this.get(
+        "SELECT team_id,username,active FROM team_accounts WHERE team_id=?",
+        teamId,
+      );
+      const username = string(input.username, "Username", 80);
+      if (!/^[a-zA-Z0-9._-]+$/.test(username))
+        throw new AppError("Username contains invalid characters.");
+      const active = input.active === false ? 0 : 1;
+      if (old) {
+        this.run(
+          "UPDATE team_accounts SET username=?,active=? WHERE team_id=?",
+          username,
+          active,
+          teamId,
+        );
+        if (input.password)
+          this.run(
+            "UPDATE team_accounts SET password_hash=? WHERE team_id=?",
+            hashPassword(input.password),
+            teamId,
+          );
+      } else {
+        this.run(
+          "INSERT INTO team_accounts VALUES(?,?,?,?)",
+          teamId,
+          username,
+          hashPassword(input.password),
+          active,
+        );
+      }
+      this.run("DELETE FROM team_sessions WHERE team_id=?", teamId);
+      this.audit(operator, "TEAM_ACCOUNT_SAVE", "team", teamId, old, {
+        username,
+        active,
+      });
+      return this.teamAccounts();
+    });
+  }
+  teamPortal(teamId) {
+    const details = this.teamDetails(teamId);
+    return {
+      team: {
+        id: details.id,
+        name: details.name,
+        project: details.project,
+        balance: details.balance,
+        members: details.members.map(({ name }) => ({ name })),
+        inventory: details.inventory,
+        mitra: details.mitra ? { name: details.mitra.name } : null,
+      },
+      eventName: this.config().eventName,
+      timer: this.timer(),
+      ledger: this.all(
+        "SELECT l.id,t.ref,t.created_at,t.status,l.type,l.amount,l.balance_after FROM bolt_ledger l JOIN transactions t ON t.id=l.transaction_id WHERE l.team_id=? ORDER BY l.id DESC",
+        teamId,
+      ),
+      movements: this.all(
+        "SELECT m.id,t.ref,t.created_at,t.status,c.name,m.quantity,m.quantity_after FROM inventory_movements m JOIN transactions t ON t.id=m.transaction_id JOIN components c ON c.id=m.component_id WHERE m.team_id=? ORDER BY m.id DESC",
+        teamId,
+      ),
+    };
+  }
   operators() {
     return this.all(
       "SELECT id,username,name,role,active,created_at FROM operators",
@@ -1097,7 +1266,7 @@ export class Store {
         throw new Error("Integrity check failed");
       if (
         candidate.prepare("SELECT version FROM schema_version").get()
-          ?.version !== 1
+          ?.version !== 2
       )
         throw new Error("Incompatible schema");
       const objectsSql =
@@ -1125,9 +1294,12 @@ export class Store {
       }
       if (candidate.prepare("PRAGMA foreign_key_check").all().length)
         throw new Error("Invalid foreign keys");
-      const config = JSON.parse(
-        candidate.prepare("SELECT value FROM config WHERE id=1").get().value,
-      );
+      const config = {
+        ...defaultConfig,
+        ...JSON.parse(
+          candidate.prepare("SELECT value FROM config WHERE id=1").get().value,
+        ),
+      };
       if (
         config.currencyName !== "RAS Bolts" ||
         !Number.isInteger(config.durationMinutes) ||
@@ -1156,6 +1328,32 @@ export class Store {
         .all();
       if (boltChain.length || itemChain.length)
         throw new Error("Ledger running totals are inconsistent");
+      if (
+        candidate
+          .prepare(
+            "SELECT 1 FROM inventory_movements GROUP BY component_id,team_id HAVING team_id IS NOT NULL AND SUM(quantity)<0",
+          )
+          .get()
+      )
+        throw new Error("Backup contains negative team inventory");
+      if (
+        !config.allowNegativeBalance &&
+        candidate
+          .prepare(
+            "SELECT 1 FROM bolt_ledger GROUP BY team_id HAVING SUM(amount)<0",
+          )
+          .get()
+      )
+        throw new Error("Backup contains forbidden negative RAS Bolt balances");
+      if (
+        !config.allowNegativeStock &&
+        candidate
+          .prepare(
+            "SELECT 1 FROM inventory_movements WHERE team_id IS NULL GROUP BY component_id HAVING SUM(quantity)<0",
+          )
+          .get()
+      )
+        throw new Error("Backup contains forbidden negative market inventory");
       if (
         candidate
           .prepare(
@@ -1239,6 +1437,7 @@ export class Store {
           restored = { id: Number(r.lastInsertRowid) };
         }
         this.run("DELETE FROM sessions");
+        this.run("DELETE FROM team_sessions");
         this.audit(
           restored,
           "DATABASE_RESTORE",
@@ -1306,6 +1505,22 @@ export class Store {
       ),
       inventoryErrors: this.all(
         "SELECT * FROM (SELECT *,COALESCE(SUM(quantity) OVER (PARTITION BY component_id,team_id ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) expected FROM inventory_movements) WHERE quantity_before<>expected OR quantity_after<>quantity_before+quantity",
+      ),
+      negativeTeamInventory: this.all(
+        "SELECT component_id,team_id,SUM(quantity) quantity FROM inventory_movements WHERE team_id IS NOT NULL GROUP BY component_id,team_id HAVING SUM(quantity)<0",
+      ),
+      negativeMarketInventory: this.config().allowNegativeStock
+        ? []
+        : this.all(
+            "SELECT component_id,SUM(quantity) quantity FROM inventory_movements WHERE team_id IS NULL GROUP BY component_id HAVING SUM(quantity)<0",
+          ),
+      negativeBalances: this.config().allowNegativeBalance
+        ? []
+        : this.all(
+            "SELECT team_id,SUM(amount) balance FROM bolt_ledger GROUP BY team_id HAVING SUM(amount)<0",
+          ),
+      duplicateActiveComponents: this.all(
+        "SELECT LOWER(TRIM(name)) name,COUNT(*) count FROM components WHERE status='Active' GROUP BY LOWER(TRIM(name)) HAVING COUNT(*)>1",
       ),
     };
   }

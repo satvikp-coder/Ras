@@ -1,4 +1,5 @@
 import { CsvExport, Settings } from "./settings";
+import { TeamPortal } from "./team-portal";
 import { TransactionRecord } from "./transaction-record";
 import {
   StrictMode,
@@ -10,6 +11,7 @@ import {
 import { createRoot } from "react-dom/client";
 import {
   api,
+  requestKey as newRequestKey,
   download,
   type Bootstrap,
   type Operator,
@@ -52,7 +54,12 @@ const baseFields: Field[] = [
 ];
 const notes: Field = { key: "notes", label: "Notes", type: "textarea" };
 function Login({ onLogin }: { onLogin: (user: Operator) => void }) {
-  const [username, setUsername] = useState("admin"),
+  const [accountType, setAccountType] = useState(
+    window.location.hash === "#team" ? "team" : "operator",
+  );
+  const [username, setUsername] = useState(
+      window.location.hash === "#team" ? "" : "admin",
+    ),
     [password, setPassword] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -60,7 +67,13 @@ function Login({ onLogin }: { onLogin: (user: Operator) => void }) {
     e.preventDefault();
     setBusy(true);
     try {
-      onLogin(await api<Operator>("/login", "POST", { username, password }));
+      onLogin(
+        await api<Operator>("/login", "POST", {
+          username,
+          password,
+          accountType,
+        }),
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -74,6 +87,26 @@ function Login({ onLogin }: { onLogin: (user: Operator) => void }) {
       <h1>Competition Control Center</h1>
       <p className="subtle">Local operations · RAS Bolts · Mentor Mitra</p>
       <form onSubmit={login}>
+        <label>
+          Sign in as
+          <select
+            value={accountType}
+            onChange={(e) => {
+              setAccountType(e.target.value);
+              setUsername("");
+              setPassword("");
+              setError("");
+            }}
+          >
+            <option value="operator">Committee / Operator</option>
+            <option value="team">Team</option>
+          </select>
+        </label>
+        {accountType === "team" && (
+          <p className="subtle">
+            Use the team credentials provided by your organizer.
+          </p>
+        )}
         <label>
           Username
           <input
@@ -149,7 +182,7 @@ function App() {
     }
   }
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === "Team") return;
     let alive = true;
     async function load() {
       try {
@@ -210,6 +243,7 @@ function App() {
   }
   useEffect(() => {
     function key(e: KeyboardEvent) {
+      if (user?.role === "Team") return;
       const target = e.target as HTMLElement;
       if (
         modal ||
@@ -264,6 +298,10 @@ function App() {
                 type: "number",
                 min: 0,
                 required: true,
+                disabled: data.config.starterAllocationEnabled,
+                help: data.config.starterAllocationEnabled
+                  ? "Official event allocation comes from Settings and is recorded in the ledger."
+                  : undefined,
               } as Field,
             ]
           : []),
@@ -272,7 +310,25 @@ function App() {
           label: "Members — one per line; optional contact after |",
           type: "textarea",
         },
-        { key: "project", label: "Project name" },
+        {
+          key: "project",
+          label: "Assigned robot",
+          type: "select",
+          options: [
+            { value: "", label: "Assign later" },
+            ...data.projects.map((p) => ({ value: p.name, label: p.name })),
+            ...(entity &&
+            (entity as Team).project &&
+            !data.projects.some((p) => p.name === (entity as Team).project)
+              ? [
+                  {
+                    value: (entity as Team).project,
+                    label: (entity as Team).project,
+                  },
+                ]
+              : []),
+          ],
+        },
         { key: "description", label: "Project description", type: "textarea" },
         statuses(),
         notes,
@@ -469,7 +525,7 @@ function App() {
       type: "textarea",
       required: true,
     });
-    const requestKey = crypto.randomUUID();
+    const requestKey = newRequestKey();
     setModal({
       title: inventory
         ? "Auditable inventory adjustment"
@@ -641,7 +697,7 @@ function App() {
     try {
       const details = await api<Row>(`/transactions/${id}`);
       const purchaseRow = details.purchase as Row;
-      const requestKey = crypto.randomUUID();
+      const requestKey = newRequestKey();
       setModal({
         title: "Return items and refund RAS Bolts",
         body: (
@@ -680,7 +736,7 @@ function App() {
     }
   }
   function voidDialog(id: number, ref: string) {
-    const requestKey = crypto.randomUUID();
+    const requestKey = newRequestKey();
     setModal({
       title: `Void ${ref}`,
       body: (
@@ -824,6 +880,15 @@ function App() {
   }
   if (!authReady) return <div className="empty">Checking local session…</div>;
   if (!user) return <Login onLogin={setUser} />;
+  if (user.role === "Team")
+    return (
+      <TeamPortal
+        onLogout={() => {
+          setUser(null);
+          setData(null);
+        }}
+      />
+    );
   if (!data)
     return (
       <div className="empty">
@@ -871,10 +936,14 @@ function App() {
   const filteredMitras = data.mitras.filter((m) =>
     `${m.id} ${m.name}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const filteredComponents = data.components.filter((c) =>
-    `${c.id} ${c.name} ${c.category}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
+  const filteredComponents = data.components.filter(
+    (c) =>
+      (page !== "Shop" ||
+        (c.status === "Active" &&
+          !["Starter", "Common", "Reference"].includes(c.category))) &&
+      `${c.id} ${c.name} ${c.category}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
   const selectedTeam = data.teams.find((t) => t.id === teamId),
     selectedMitra = data.mitras.find((m) => m.id === mitraId),
@@ -945,6 +1014,34 @@ function App() {
         >
           <div>
             <p className="eyebrow">COMPETITION TIMER</p>
+            <p>
+              {data.config.eventName} · {data.config.venue}
+            </p>
+            <p>{data.config.organizer}</p>
+            <p>
+              {data.config.teamLimit ?? 8} team slots ·{" "}
+              {data.config.initialBolts} RAS Bolts / team ·{" "}
+              {data.config.teamSize} members / team
+            </p>
+            <p>BUILD SMART. SPEND SMART. TRADE SMART. BUILD FAST.</p>
+            {data.teams.some(
+              (t) =>
+                t.members.length !== data.config.teamSize ||
+                !data.projects.some((p) => p.name === t.project) ||
+                !t.mitra,
+            ) && (
+              <p className="notice">
+                Complete team setup before starting: enter{" "}
+                {data.config.teamSize} members, assign a robot and Mentor Mitra
+                for each team.
+              </p>
+            )}
+            <p>
+              Free starter kit:{" "}
+              {data.starters
+                .map((s) => `${s.quantity} × ${s.name}`)
+                .join(" · ")}
+            </p>
             <div className="clock" aria-label={`${clock} remaining`}>
               {clock}
             </div>
@@ -1169,6 +1266,32 @@ function App() {
             <section className="card">
               <h3>Project</h3>
               <h4>{selectedTeam.project || "No project entered"}</h4>
+              {data.projects.find((p) => p.name === selectedTeam.project) && (
+                <Table
+                  rows={Object.entries(
+                    data.projects.find((p) => p.name === selectedTeam.project)!
+                      .requirements,
+                  ).map(([id, required]) => {
+                    const owned =
+                      selectedTeam.inventory.find((i) => i.id === id)
+                        ?.quantity ?? 0;
+                    return {
+                      id,
+                      name:
+                        data.components.find((c) => c.id === id)?.name ?? id,
+                      required,
+                      owned,
+                      remaining: Math.max(0, required - owned),
+                    };
+                  })}
+                  columns={[
+                    { key: "name", label: "Required market component" },
+                    { key: "required", label: "Required" },
+                    { key: "owned", label: "Owned" },
+                    { key: "remaining", label: "Still required" },
+                  ]}
+                />
+              )}
               <p className="pre-wrap">{selectedTeam.description}</p>
               <h3>Members</h3>
               {selectedTeam.members.length ? (

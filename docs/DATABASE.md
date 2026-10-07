@@ -2,7 +2,7 @@
 
 ## Layout
 
-`data/competition.sqlite` (configurable `DB_PATH`) stores the complete event. Node 24 built-in SQLite enables foreign keys, WAL journaling, FULL synchronization and a 5-second busy timeout. Schema version 1 is initialized through `server/schema.sql`; all state changes go through `server/store.mjs`. The server has no arbitrary SQL endpoint.
+`data/competition.sqlite` (configurable `DB_PATH`) stores the complete event. Node 24 built-in SQLite enables foreign keys, WAL journaling, FULL synchronization and a 5-second busy timeout. Schema version 2 is initialized through `server/schema.sql`; version 1 upgrades transactionally on startup. All state changes go through `server/store.mjs`. The server has no arbitrary SQL endpoint. The `team_accounts` and `team_sessions` tables provide separate team credentials and hashed sessions linked to exactly one team; team requests are restricted to the self-service dashboard, session check and logout. Restores require version 2 backups; see the README for upgrading older backup copies.
 
 | Tables                                          | Purpose                                                                                                        |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -25,7 +25,7 @@ Current RAS Bolts = `SUM(bolt_ledger.amount)` for a team. Inventory = `SUM(inven
 
 **Void accounting:** original ledger rows remain posted immutable historical facts. Voiding changes the transaction's display status to VOIDED and posts equal/opposite entries in a new COMPLETED reversal. Both originals and reversals participate in the running ledger, so their net effect is zero. Do not filter original VOIDED rows out of a running balance while also including their reversals: that would reverse twice. This implementation commits financial postings only as COMPLETED; PENDING/CORRECTED statuses are reserved and cannot be introduced through the application. The backup validator rejects postings under those reserved statuses. Commercial totals exclude voided purchases/trades; purchase spending subtracts completed REFUND entries.
 
-Example: INITIAL_BALANCE +100 → PURCHASE −20 → trade receipt +15 = 95 RAS Bolts. Void the trade: CORRECTION −15 = 80. Void the purchase: CORRECTION +20 = 100. Every step appears in the ledger with operator and timestamp.
+Example: INITIAL_BALANCE +1000 → PURCHASE −200 → trade receipt +150 = 950 RAS Bolts. Void the trade: CORRECTION −150 = 800. Void the purchase: CORRECTION +200 = 1000. Every step appears in the ledger with operator and timestamp.
 
 Inventory follows the same reversal rule. Shop purchase creates −quantity for shop and +quantity for team. A trade posts −quantity for outgoing team and +quantity for incoming team. Admin corrections explicitly identify an owner and reason. Team quantities can never go negative. Shop negatives require an explicit rule switch.
 

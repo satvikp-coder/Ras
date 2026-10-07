@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, type Bootstrap, type Row } from "./api";
+import { api, requestKey, type Bootstrap, type Row } from "./api";
 import { TeamSelect, Badge } from "./ui";
 interface Item {
   componentId: string;
@@ -34,11 +34,19 @@ function TradeItems({
             }
           >
             <option value="">Choose owned item</option>
-            {holdings.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name} · owns {h.quantity}
-              </option>
-            ))}
+            {holdings
+              .filter((h) => {
+                const component = data.components.find((c) => c.id === h.id);
+                return (
+                  component?.status === "Active" &&
+                  !["Common", "Reference"].includes(component.category)
+                );
+              })
+              .map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name} · owns {h.quantity}
+                </option>
+              ))}
           </select>
           <input
             aria-label="Item quantity"
@@ -98,6 +106,7 @@ export function TransactionForm({
   const [itemsA, setItemsA] = useState<Item[]>([]),
     [itemsB, setItemsB] = useState<Item[]>([]);
   const [notes, setNotes] = useState("");
+  const [approvalReason, setApprovalReason] = useState("");
   const [pending, setPending] = useState<Row | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -120,7 +129,8 @@ export function TransactionForm({
             quantity,
             expectedPrice: item?.price,
             notes,
-            requestKey: crypto.randomUUID(),
+            approvalReason,
+            requestKey: requestKey(),
             ...(correctionOf ? { correctionOf } : {}),
           }
         : {
@@ -131,7 +141,7 @@ export function TransactionForm({
             itemsA,
             itemsB,
             notes,
-            requestKey: crypto.randomUUID(),
+            requestKey: requestKey(),
             ...(correctionOf ? { correctionOf } : {}),
           },
     );
@@ -335,6 +345,9 @@ export function TransactionForm({
                         .filter(
                           (c) =>
                             c.status === "Active" &&
+                            !["Starter", "Common", "Reference"].includes(
+                              c.category,
+                            ) &&
                             (c.id === component ||
                               `${c.name} ${c.id} ${c.category}`
                                 .toLowerCase()
@@ -359,6 +372,20 @@ export function TransactionForm({
                     />
                   </label>
                   <p className="balance">Total: {total} RAS Bolts</p>
+                  {data.config.enforceProjectPurchases && (
+                    <label>
+                      Admin strategic acquisition approval reason (optional)
+                      <input
+                        value={approvalReason}
+                        maxLength={500}
+                        onChange={(e) => setApprovalReason(e.target.value)}
+                      />
+                      <small>
+                        Only an Admin can approve purchases outside the assigned
+                        robot's required quantities.
+                      </small>
+                    </label>
+                  )}
                   {item?.max_per_team && (
                     <small>Team purchase cap: {item.max_per_team}</small>
                   )}

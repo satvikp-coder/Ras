@@ -23,7 +23,35 @@ If you received a folder, open a terminal inside that folder and run the last tw
 
 Open **http://127.0.0.1:3000**. On the first run, the terminal prints username **admin** and a randomly generated password **once**. Save that password securely. The database and schema initialize automatically; there is no separate migration or initialization command. Sign in, then use **Settings → Local operators** to change the admin password and create committee accounts. Updating your own account signs you out so you can verify the new credentials.
 
-**Do not use sample prices, stock or allocations in the real event.** The real database starts empty, with an unconfirmed allocation of zero RAS Bolts and trading/refund rules disabled. In Settings, enter the actual allocation and rules and tick both confirmation boxes. Then enter the real teams, Mentor Mitras and components. Starting the timer is blocked until setup is confirmed.
+The final event supports **8 teams, 40 participants, 5 members per team, and 1,000 RAS Bolts per team**, at **GICT 105, Ahmedabad University**, organized by **IEEE Robotics & Automation Society, Ahmedabad University Student Branch**. The configured live database is ready for team setup. On a new installation, stop the server and run `node scripts/configure-final-event.mjs` once to load official settings and inventory, then run `npm start`. This command creates a native backup, preserves existing teams and audit history, and refuses to reset inventory after purchases or trades. A new database has unconfirmed rules until configured.
+
+Each team automatically receives **Arduino Uno ×1, Chassis / Frame ×1, Wheel ×2, Caster Wheel ×1** free. `STARTER_ALLOCATION` inventory adjustments record ownership without a Bolt debit or market-stock reduction. Each team receives its starter kit once. Its **+1,000 INITIAL_BALANCE** is a ledger entry.
+
+## Official Backstreet Market
+
+| Component                 | Starting quantity | Price in RAS Bolts |
+| ------------------------- | ----------------: | -----------------: |
+| DC Geared Motor           |                16 |                100 |
+| Motor Driver              |                 8 |                120 |
+| Battery / Power Source    |                 8 |                100 |
+| HC-SR04 Ultrasonic Sensor |                 3 |                100 |
+| IR Line Sensor            |                 4 |                 60 |
+| LDR / Light Sensor        |                 2 |                 30 |
+| HC-05 Bluetooth Module    |                 1 |                150 |
+| Sound / Microphone Sensor |                 1 |                 80 |
+| Servo Motor               |                 1 |                100 |
+
+The exact quantities total **44 items** with a value of **4,290 Bolts**. The planning document's stated total of 43 is inconsistent with its line items. Two reported spare casters remain under Starter inventory, outside the paid market. Organizers must have eight complete starter kits physically available in addition to spare stock.
+
+Robot choices: Obstacle Avoidance (2 teams), Line Follower (2), Light Follower (1), Bluetooth Controlled Car (1), Clap Detector (1), Radar Car (1). Team creation offers these choices; Team Details shows required, owned and still-required market quantities. Distribution is guidance, not a hard block. Enter five actual members and assign a Mentor Mitra before competition.
+
+**Enforce Project Component Purchase Rules** is enabled in final setup. Purchases are limited to the assigned robot's requirements and quantities. Admin can approve strategic acquisition by entering a reason in the purchase form; Shop Operators cannot override. Settings can disable enforcement. Starter, common and reference items cannot be purchased. Jumpers, breadboards and other workshop supplies are outside the Bolt economy and cannot be traded through it. Retired planning stock is inactive.
+
+**Trading is central:** item ↔ item, item ↔ negotiated Bolts, mixed items + Bolts and pure Bolt transfers are enabled. Values are independent of market prices. Every leg commits atomically, validates holdings/funds and leaves central market stock unchanged. Retain unused Bolts for resource optimization: **BUILD SMART. SPEND SMART. TRADE SMART. BUILD FAST.** Negative balances/stock, refunds and post-event editing are disabled. Reasoned Admin voids and linked replacements remain available.
+
+Calculated robot costs: Obstacle **520**, Line **540**, Light **480**, Bluetooth **570**, Clap **500**, Radar **620**. The older Light subtotal 380 is incorrect; remaining balance is **520** after spending 480.
+
+`node scripts/final-simulation.mjs` runs the four-team API rehearsal on an isolated native backup of the live database, then deletes its entire temporary database. It preserves genuine live data and audit history. At most four existing teams may be present for four test teams to fit the eight-slot limit. `npm test` includes an independent fresh-database rehearsal. See [final audit report](docs/FINAL_COMPETITION_AUDIT.md).
 
 ## Commands
 
@@ -63,7 +91,15 @@ The backend is readable native JavaScript modules with centralized validation an
 
 The real database is **`data/competition.sqlite`** by default. SQLite also creates `-wal` and `-shm` files while running. Do not manually copy only the live `.sqlite` file: use Backup database. All `data/`, generated databases, backups, exports, dependencies, `.env` and build assets are ignored by Git.
 
-`server/schema.sql` initializes schema version 1 idempotently. Incompatible backups are rejected. Future structural migrations must explicitly update the schema version and restore validator; there is no automatic conversion of unrelated or legacy databases.
+`server/schema.sql` initializes schema version 2 idempotently. Existing version 1 databases upgrade transactionally on startup, preserving competition records and operator credentials while adding team accounts and sessions. Create a fresh backup after upgrading: the restore UI accepts version 2 backups only. To use a version 1 backup, retain the original, start the app with `DB_PATH` pointing to a separate copy to upgrade it, and create a version 2 backup from that copy. Unrelated databases are not converted.
+
+## Team login
+
+Admin: open **Settings → Team logins**, select an existing team, and set its username and password (at least 10 characters). Share those credentials and **http://127.0.0.1:3000/#team** (replace the host with the server's network address for other devices). Teams can also choose **Team** under **Sign in as** on the normal login screen.
+
+Teams see only their own balance, inventory, RAS Bolt and inventory histories, member names, project, assigned mentor name and event timer. The dashboard refreshes every five seconds. Purchases and trades are still recorded by committee operators. Team access cannot view other teams, exports, private organizer notes, member contacts or administration endpoints.
+
+Use the same Settings section to reset a password or disable an account; saving revokes that team's existing sessions. Inactive teams cannot sign in or use existing sessions. Team and operator usernames are separate namespaces. Team credentials are included in database backups; restore expires both types of session.
 
 Optional configuration: copy `.env.example` to `.env` and adjust these variables:
 
@@ -111,7 +147,7 @@ Keep [the competition-day quick guide](docs/COMPETITION_DAY_GUIDE.md) open durin
 npm run demo
 ```
 
-This creates **`data/demo.sqlite`**, prints a separate generated admin password, and inserts explicitly labelled DEMO teams, Mentor Mitras, 100 RAS Bolts allocations, sample components/prices and permissive sample trade rules. It never writes to the real competition database and refuses to overwrite an existing demo database.
+This creates **`data/demo.sqlite`**, prints a separate generated admin password, and inserts explicitly labelled DEMO teams, Mentor Mitras, 1,000 RAS Bolts allocations, sample components/prices and permissive sample trade rules. It never writes to the real competition database and refuses to overwrite an existing demo database.
 
 PowerShell:
 

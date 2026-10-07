@@ -137,7 +137,7 @@ test("separate demo creates samples, refuses overwrite and never creates a real 
   assert.equal(result.status, 0);
   assert.ok(!existsSync(join(dir, "data", "competition.sqlite")));
   const demo = new Store(join(dir, "data", "demo.sqlite"));
-  assert.equal(demo.balance("T01"), 100);
+  assert.equal(demo.balance("T01"), 1000);
   assert.equal(demo.stock("C01"), 10);
   assert.equal(
     demo.all("SELECT * FROM assignments WHERE mitra_id=?", "M01").length,
@@ -157,14 +157,14 @@ test("incompatible existing database is rejected before schema mutation", (t) =>
   const path = join(dir, "incompatible.sqlite");
   const db = new DatabaseSync(path);
   db.exec(
-    "CREATE TABLE schema_version(version INTEGER); INSERT INTO schema_version VALUES(2)",
+    "CREATE TABLE schema_version(version INTEGER); INSERT INTO schema_version VALUES(999)",
   );
   db.close();
   assert.throws(() => new Store(path), /Unsupported database schema version/);
   const check = new DatabaseSync(path);
   assert.equal(
     check.prepare("SELECT version FROM schema_version").get().version,
-    2,
+    999,
   );
   assert.equal(
     check

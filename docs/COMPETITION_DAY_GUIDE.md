@@ -1,55 +1,70 @@
 # Competition-day quick guide
 
-**Robots of the Backstreet · 7 October · 3:00–4:30 PM · RAS Bolts · Mentor Mitra**
+**ROBOTS OF THE BACKSTREET — 7 October 2026 — 3:00–4:30 PM — GICT 105, Ahmedabad University**
 
-## Start the system
+IEEE Robotics & Automation Society, Ahmedabad University Student Branch. **8 teams · 40 participants · 5 members/team · 1,000 RAS Bolts/team · 90 minutes.**
 
-Open a terminal in the project folder: `npm start`. Open http://127.0.0.1:3000 and sign in. If already built, `npm run serve` starts faster. On a fresh database, the admin password appears once in the terminal. Save it securely.
+## Launch and team setup
 
-## Pre-event checks
+1. Run `npm start` in the project folder. Open http://127.0.0.1:3000 and sign in. `npm run serve` starts an existing build faster. Save first-run credentials securely.
+2. For network access, PowerShell: `$env:HOST='0.0.0.0'` then `npm run serve`. Use this computer's current IPv4 address and port 3000. Keep it awake and on reliable power.
+3. For a fresh installation only, stop the server and run `node scripts/configure-final-event.mjs`. The existing live database is already configured. Setup backs up first and refuses to reset stock after commercial transactions.
+4. Preserve real teams. Add remaining teams up to eight; enter five actual members, select the assigned robot and assign a Mentor Mitra.
+5. Every new team gets **INITIAL_BALANCE +1,000** and a free **STARTER_ALLOCATION**: Arduino Uno ×1, Chassis / Frame ×1, Wheel ×2, Caster Wheel ×1. Check balance and holdings. No fake purchases are required. Eight teams need 8 Arduino, 8 chassis, 16 wheels and 8 casters. Verify physical availability; two spare casters are recorded separately.
+6. Settings → Team logins: click a team ID, create credentials and share the `/#team` link. Teams see only their own records; operators record transactions.
 
-- Real database selected; no DEMO banner.
-- Settings: actual duration, initial RAS Bolts, rules, confirmation boxes and negative-balance/stock settings verified.
-- Teams/members/projects and Mentor Mitras/assignments verified.
-- Actual component prices and quantities verified. Review team balances against initial ledger entries.
-- Operator roles verified. Download a backup and copy it to USB.
-- Computer on reliable power, automatic sleep disabled, clock correct. Keep clock unchanged during competition.
+Robot distribution: Obstacle Avoidance ×2, Line Follower ×2, Light Follower ×1, Bluetooth Controlled Car ×1, Clap Detector ×1, Radar Car ×1. Team Details lists required, owned and missing components.
 
-## Start / pause / resume timer
+## Official market
 
-Admin: Dashboard → Start competition at actual start. Pause / Resume buttons or **Space** when focus is outside controls. Pausing blocks purchases and trades. Refresh or server restart preserves timer state; an active timer keeps counting during server downtime. Warnings appear at 30, 10, 5 and 1 minutes.
+| Component                 | Starting stock | Bolts each |
+| ------------------------- | -------------: | ---------: |
+| DC Geared Motor           |             16 |        100 |
+| Motor Driver              |              8 |        120 |
+| Battery / Power Source    |              8 |        100 |
+| HC-SR04 Ultrasonic Sensor |              3 |        100 |
+| IR Line Sensor            |              4 |         60 |
+| LDR / Light Sensor        |              2 |         30 |
+| HC-05 Bluetooth Module    |              1 |        150 |
+| Sound / Microphone Sensor |              1 |         80 |
+| Servo Motor               |              1 |        100 |
 
-## Record a purchase
+Total: **44 items, 4,290 Bolts**. Starter kits and common supplies are separate. Jumper/connecting wires, breadboards, screws, nuts/bolts, ties, tape, cardboard, tools and mounting materials cost no individual Bolts and are excluded from paid purchases and trades.
 
-**P** or New purchase → search/select team → search/select component → quantity → Review purchase → verify team, item, price, total and projected balance → Confirm purchase. A completed transaction updates RAS Bolts, shop stock and team inventory together. An error saves nothing. Retry an uncertain submission in the same confirmation screen; do not create a new purchase until checking history.
+## Before starting
 
-## Record a trade
+- Check real database, eight teams, five members/team, robot assignments, Mitras, operator roles, starter holdings and 1,000-Bolt allocations.
+- Check exact market stock/prices and both rule confirmations.
+- All trade types and Bolt transfers are enabled. Negative balances/stock, refunds and Admin post-event transactions are disabled.
+- Project purchase enforcement is ON. Admin can enter a strategic-acquisition approval reason; Shop Operators cannot override. Settings can disable the rule if organizers decide.
+- Download a native backup and copy it to USB. Keep the server clock unchanged during competition.
 
-**T** or New trade → choose different teams → add each team's outgoing items and optional RAS Bolts → Review trade → check both projected balances and holdings → Confirm trade. Teams must own outgoing items. All legs commit together. Rule switches control permissible combinations.
+## Timer
 
-## View balance / inventory
+Admin: Dashboard → Start competition at actual start. Duration is 90 minutes; advertised times are informational. Pause/Resume or Space persists across refresh/restart. Paused transactions are blocked. An active timer continues during downtime. End or expiry locks purchases/trades on the backend.
 
-Dashboard team lookup or Teams → click Team ID. Profile contains current RAS Bolts, initial allocation, spending, Mentor Mitra, members, project and tabs for purchases/trades/ledger/holdings/audit. Global Search locates members, projects and transaction references.
+## Purchases
 
-## Correct a mistake
+P or New purchase → team/component/quantity → Review → verify total/balance/stock → Confirm. Market stock decreases, team holdings increase and Bolts decrease atomically. Invalid quantities, insufficient stock/funds and duplicate confirmation cannot create extra completed purchases. Reuse the same confirmation after uncertain submission and check history before a new request.
 
-Admin: Purchases / Trades / Ledger → click reference → Void transaction → enter reason → Confirm void. Original remains marked VOIDED; reversal appears in the ledger. If an item has been traded onward or a receipt spent, reverse dependent transactions first. Reverse active refunds before voiding their purchase. For a replacement purchase/trade, open the VOIDED original and select Create linked replacement.
+## Negotiated trades
 
-Optional refunds: enable Allow purchase refunds in Settings, then open a completed purchase → Refund items → returned quantity and reason. Team holdings must contain returned items. RAS Bolts are refunded at the original purchase price.
+T or New trade → two different teams → each side's outgoing owned items and optional Bolts → record agreed terms in Notes → Review → Confirm. Item ↔ item, item ↔ Bolts, mixed combinations and pure transfers work. A market motor at 100 can trade for an agreed 150 Bolts. Market stock remains unchanged. All legs commit together or none do.
 
-Bonuses/penalties or other corrections: Settings → RAS Bolts adjustment → signed amount and required reason. Never attempt direct balance editing. Inventory corrections use Inventory adjustment and a reason.
+Teams cannot trade unowned/excess items or unavailable Bolts. Keep unused Bolts: **BUILD SMART. SPEND SMART. TRADE SMART. BUILD FAST.**
 
-## End / export / backup
+## Corrections
 
-The timer's zero locks normal transactions. Admin may end early with an explicit END COMPETITION confirmation. Reports → inspect final results → Export Excel → select and export CSV datasets if needed → Print / Save PDF → Settings → Backup database → copy backup away from event computer.
+Admin: open transaction details → Void → required reason. Original remains VOIDED; linked reversal restores effective balances/holdings. Reverse dependent transactions first if items moved onward or receipts were spent. A VOIDED commercial record can have one linked replacement. Never delete event transactions or directly edit balances.
 
-Admin post-event transactions require explicit post-event editing in Settings. Disable that switch after reconciliation and take another final backup.
+Settings → RAS Bolts adjustment records bonuses, penalties and corrections. Inventory corrections require reasons. Existing initial allocation corrections use signed INITIAL_BALANCE entries before start and before other financial history.
 
-## Emergency restore
+## Export, backup and restore
 
-1. Stop operators; preserve current files. If server works: Admin → Settings → choose SQLite backup → type **RESTORE DATABASE** → Validate and restore.
-2. A pre-restore backup is created automatically in `data/backups/`. Restore validates schema and ledgers before replacement.
-3. Sign in again using credentials contained in the restored backup. Check teams, balances, holdings and timer. An active timer still follows its timestamps.
-4. If server cannot open a damaged database: stop it; move **all** `competition.sqlite`, `competition.sqlite-wal` and `competition.sqlite-shm` files that exist into a separate, clearly named recovery folder. Keep them. Start a fresh database, save its printed admin password, sign in and use the restore UI with a valid backup. Do not manually overwrite a running database.
+Reports → verify final balances/holdings → Excel → required CSV datasets → Print/Save PDF → Settings → Backup database. Excel includes teams, purchases, trades, Bolt ledger, inventory, team inventory, Mitras, audit, timer summary and configuration. Reports are provisional until end. Keep a final native backup separately.
 
-Never delete event data during a rushed recovery. Never use the demo reset for real data. Contact the committee's technical operator with [README troubleshooting](../README.md), not a dependency on the original developer.
+Restore: stop operators, choose native SQLite backup, type **RESTORE DATABASE**. Schema/integrity/ledger chains are validated before replacement; a pre-restore backup is automatic. Both operator/team sessions expire. Sign in with the backup's credentials. Corrupt files are rejected without replacing live data. See README for older backups and damaged-database recovery. Never overwrite running SQLite files.
+
+## Arithmetic note
+
+Project costs: Obstacle 520, Line 540, Light **480**, Bluetooth 570, Clap 500, Radar 620. Light uses 60 + 120 + 200 + 100 = **480**, leaving **520**. The planning subtotal 380 and market count 43 were incorrect; software uses actual prices and quantities.

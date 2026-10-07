@@ -1,6 +1,6 @@
 PRAGMA foreign_keys=ON;
-CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY CHECK(version=1));
-INSERT OR IGNORE INTO schema_version VALUES(1);
+CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY CHECK(version=2));
+INSERT OR IGNORE INTO schema_version VALUES(2);
 CREATE TABLE IF NOT EXISTS config(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS timer(id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL CHECK(state IN ('NOT_STARTED','ACTIVE','PAUSED','ENDED')), started_at TEXT, ended_at TEXT, resumed_at TEXT, elapsed_ms INTEGER NOT NULL DEFAULT 0 CHECK(elapsed_ms>=0));
 INSERT OR IGNORE INTO timer(id,state) VALUES(1,'NOT_STARTED');
@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS operators(id INTEGER PRIMARY KEY, username TEXT NOT N
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, operator_id INTEGER NOT NULL REFERENCES operators(id), expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS teams(id TEXT PRIMARY KEY, number TEXT NOT NULL, name TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN ('Active','Inactive')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS members(id INTEGER PRIMARY KEY, team_id TEXT NOT NULL REFERENCES teams(id), name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS team_accounts(team_id TEXT PRIMARY KEY REFERENCES teams(id), username TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)));
+CREATE TABLE IF NOT EXISTS team_sessions(token_hash TEXT PRIMARY KEY, team_id TEXT NOT NULL REFERENCES team_accounts(team_id), expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS mitras(id TEXT PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN ('Active','Inactive','Available','Assigned')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS assignments(team_id TEXT PRIMARY KEY REFERENCES teams(id), mitra_id TEXT NOT NULL REFERENCES mitras(id), assigned_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS components(id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', price INTEGER NOT NULL CHECK(price>=0), max_per_team INTEGER CHECK(max_per_team IS NULL OR max_per_team>0), notes TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK(status IN ('Active','Inactive')), initial_quantity INTEGER NOT NULL DEFAULT 0 CHECK(initial_quantity>=0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);

@@ -710,3 +710,8 @@ hr {
   color: #b2d9ff;
   background: #233b54;
 }
+.team-portal {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}

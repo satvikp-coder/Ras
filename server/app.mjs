@@ -1,4 +1,5 @@
 import express from "express";
+import { STARTERS, PROJECTS } from "./event-rules.mjs";
 import multer from "multer";
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
@@ -51,11 +52,9 @@ export function createApp(store, { devOrigin = null } = {}) {
   app.use(express.json({ limit: "256kb" }));
   app.use("/api", (_req, res, next) => {
     if (maintenance)
-      return res
-        .status(503)
-        .json({
-          error: "Database restoration in progress. Please retry shortly.",
-        });
+      return res.status(503).json({
+        error: "Database restoration in progress. Please retry shortly.",
+      });
     next();
   });
   const route = (method, path, handler) =>
@@ -73,8 +72,11 @@ export function createApp(store, { devOrigin = null } = {}) {
       throw new AppError("Too many login attempts. Wait one minute.", 429);
     const username = string(req.body.username, "Username", 80),
       password = string(req.body.password, "Password", 128);
+    const teamLogin = req.body.accountType === "team";
     const user = store.get(
-      "SELECT * FROM operators WHERE username=? AND active=1",
+      teamLogin
+        ? "SELECT a.*,t.name,a.team_id id,'Team' role FROM team_accounts a JOIN teams t ON t.id=a.team_id WHERE a.username=? AND a.active=1 AND t.status='Active'"
+        : "SELECT * FROM operators WHERE username=? AND active=1",
       username,
     );
     if (!user || !checkPassword(password, user.password_hash)) {
@@ -90,13 +92,16 @@ export function createApp(store, { devOrigin = null } = {}) {
     const token = randomBytes(32).toString("hex");
     store.atomic(() => {
       store.run("DELETE FROM sessions WHERE expires_at<?", Date.now());
+      store.run("DELETE FROM team_sessions WHERE expires_at<?", Date.now());
       store.run(
-        "INSERT INTO sessions VALUES(?,?,?)",
+        teamLogin
+          ? "INSERT INTO team_sessions VALUES(?,?,?)"
+          : "INSERT INTO sessions VALUES(?,?,?)",
         tokenHash(token),
         user.id,
         Date.now() + 12 * 60 * 60 * 1000,
       );
-      store.audit(user, "LOGIN", "operator", user.id);
+      if (!teamLogin) store.audit(user, "LOGIN", "operator", user.id);
     });
     res.cookie("ras_session", token, {
       httpOnly: true,
@@ -123,16 +128,32 @@ export function createApp(store, { devOrigin = null } = {}) {
       ?.slice(12);
     if (!raw || !/^[a-f0-9]{64}$/.test(raw))
       return res.status(401).json({ error: "Please sign in." });
-    const user = store.get(
-      "SELECT o.* FROM sessions s JOIN operators o ON o.id=s.operator_id WHERE s.token_hash=? AND s.expires_at>? AND o.active=1",
-      tokenHash(raw),
-      Date.now(),
-    );
+    const user =
+      store.get(
+        "SELECT o.* FROM sessions s JOIN operators o ON o.id=s.operator_id WHERE s.token_hash=? AND s.expires_at>? AND o.active=1",
+        tokenHash(raw),
+        Date.now(),
+      ) ??
+      store.get(
+        "SELECT a.team_id id,a.username,t.name,'Team' role FROM team_sessions s JOIN team_accounts a ON a.team_id=s.team_id JOIN teams t ON t.id=a.team_id WHERE s.token_hash=? AND s.expires_at>? AND a.active=1 AND t.status='Active'",
+        tokenHash(raw),
+        Date.now(),
+      );
     if (!user)
       return res
         .status(401)
         .json({ error: "Session expired. Please sign in." });
     req.operator = user;
+    if (
+      user.role === "Team" &&
+      !(
+        (req.method === "GET" && ["/me", "/team-portal"].includes(req.path)) ||
+        (req.method === "POST" && req.path === "/logout")
+      )
+    )
+      return res
+        .status(403)
+        .json({ error: "Team accounts can only access their own dashboard." });
     next();
   });
   route("get", "/api/me", (req, res) => {
@@ -145,10 +166,24 @@ export function createApp(store, { devOrigin = null } = {}) {
       .map((v) => v.trim())
       .find((v) => v.startsWith("ras_session="))
       ?.slice(12);
-    if (raw)
+    if (raw) {
       store.run("DELETE FROM sessions WHERE token_hash=?", tokenHash(raw));
+      store.run("DELETE FROM team_sessions WHERE token_hash=?", tokenHash(raw));
+    }
     res.clearCookie("ras_session");
     res.json({ success: true });
+  });
+  route("get", "/api/team-portal", (req, res) => {
+    if (req.operator.role !== "Team")
+      throw new AppError("Team login required.", 403);
+    res.json(store.teamPortal(req.operator.id));
+  });
+  route("get", "/api/team-accounts", (req, res) => {
+    store.requireAdmin(req.operator);
+    res.json(store.teamAccounts());
+  });
+  route("put", "/api/team-accounts/:id", (req, res) => {
+    res.json(store.saveTeamAccount(req.operator, req.params.id, req.body));
   });
   route("get", "/api/bootstrap", (req, res) =>
     res.json({
@@ -160,6 +195,8 @@ export function createApp(store, { devOrigin = null } = {}) {
       components: components(store),
       operators: store.operators(),
       demo: store.demo,
+      starters: STARTERS,
+      projects: PROJECTS,
     }),
   );
   route("get", "/api/teams", (req, res) =>

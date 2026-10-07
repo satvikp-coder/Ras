@@ -66,6 +66,12 @@ export interface Timer {
   server_time: string;
 }
 export interface Config {
+  organizer: string;
+  venue: string;
+  participants: number;
+  teamSize: number;
+  starterAllocationEnabled: boolean;
+  enforceProjectPurchases: boolean;
   eventName: string;
   eventDate: string;
   startTime: string;
@@ -102,6 +108,12 @@ export interface Summary {
   popular: { component_id: string; component_name: string; quantity: number }[];
 }
 export interface Bootstrap {
+  starters: { id: string; name: string; quantity: number }[];
+  projects: {
+    name: string;
+    teams: number;
+    requirements: Record<string, number>;
+  }[];
   config: Config;
   timer: Timer;
   summary: Summary;
@@ -137,6 +149,11 @@ export async function api<T>(
   const data = await response.json();
   if (!response.ok) throw new Error(data.error ?? "Request failed.");
   return data as T;
+}
+export function requestKey() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(24)), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }
 export async function download(path: string, method = "GET") {
   const response = await fetch("/api" + path, { method });

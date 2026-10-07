@@ -10,7 +10,7 @@ if (existsSync(path)) {
 const store = new Store(path, { demo: true });
 const admin = store.get("SELECT * FROM operators WHERE username='admin'");
 store.saveConfig(admin, {
-  initialBolts: 100,
+  initialBolts: 1000,
   allocationConfirmed: true,
   rulesConfirmed: true,
   allowItemTrading: true,

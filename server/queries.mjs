@@ -1,4 +1,5 @@
 import { AppError } from "./store.mjs";
+import { isMarket } from "./event-rules.mjs";
 function validateFilters(filters) {
   for (const [key, value] of Object.entries(filters))
     if (typeof value !== "string" || value.length > 1200)
@@ -261,9 +262,9 @@ export function summary(store) {
     sold: store.get(
       "SELECT COALESCE(SUM(p.quantity),0) n FROM purchases p JOIN transactions t ON t.id=p.transaction_id WHERE t.status='COMPLETED'",
     ).n,
-    inventory: store.get(
-      "SELECT COALESCE(SUM(quantity),0) n FROM inventory_movements WHERE team_id IS NULL",
-    ).n,
+    inventory: components(store)
+      .filter(isMarket)
+      .reduce((total, item) => total + item.stock, 0),
     timer: store.timer(),
     popular: store.all(
       "SELECT p.component_id,p.component_name,SUM(p.quantity) quantity FROM purchases p JOIN transactions t ON t.id=p.transaction_id WHERE t.status='COMPLETED' GROUP BY p.component_id ORDER BY quantity DESC LIMIT 10",
