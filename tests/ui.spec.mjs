@@ -163,6 +163,56 @@ test("official event browser: eight team slots, free kit, robot selection, LAN r
 });
 
 let store, server, dir, url;
+test("partial refund automatically refreshes purchase quantities, credit and current balance", async ({
+  page,
+}) => {
+  const admin = store.get("SELECT * FROM operators WHERE username='admin'");
+  store.saveConfig(admin, { allowRefunds: true });
+  store.timerAction(admin, "start");
+  const purchase = store.purchase(admin, {
+    teamId: "T01",
+    componentId: "C01",
+    quantity: 2,
+    expectedPrice: 10,
+    requestKey: "browser-purchase-refund-display-001",
+  });
+  const original = store.get(
+    "SELECT * FROM purchases WHERE transaction_id=?",
+    purchase.id,
+  );
+  await page.goto(url);
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("browser-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Purchases", exact: true })
+    .click();
+  const row = page.getByRole("row").filter({ hasText: original.ref });
+  await expect(row.getByRole("cell").nth(4)).toHaveText("2");
+  store.refund(admin, {
+    purchaseId: original.id,
+    quantity: 1,
+    notes: "One returned motor",
+    requestKey: "browser-one-motor-refund-display-001",
+  });
+  await expect(row.getByRole("cell").nth(4)).toHaveText("1", {
+    timeout: 15000,
+  });
+  await expect(row.getByRole("cell").nth(5)).toHaveText("2");
+  await expect(row.getByRole("cell").nth(6)).toHaveText("1");
+  await expect(row.getByRole("cell").nth(7)).toHaveText("10");
+  await expect(row.getByRole("cell").nth(8)).toHaveText("10");
+  await page.getByRole("button", { name: original.ref, exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("90 RAS Bolts", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Quantity kept after returns", { exact: true }),
+  ).toBeVisible();
+  expect(store.balance("T01")).toBe(90);
+  expect(store.stock("C01", "T01")).toBe(1);
+});
 test("admin creates a team login and the team signs in to its own dashboard", async ({
   page,
 }) => {
@@ -235,8 +285,19 @@ test.beforeEach(async () => {
     initialQuantity: 10,
   });
   store.saveMitra(admin, { id: "M01", name: "Mentor One" });
-  server = createApp(store).listen(0, "127.0.0.1");
-  await new Promise((r) => server.once("listening", r));
+  // Windows may allocate browser-blocked low ports (for example 6668).
+  for (let port = 31000; port < 31100; port++) {
+    server = createApp(store).listen(port, "127.0.0.1");
+    try {
+      await new Promise((resolve, reject) => {
+        server.once("listening", resolve);
+        server.once("error", reject);
+      });
+      break;
+    } catch (error) {
+      if (error.code !== "EADDRINUSE" || port === 31099) throw error;
+    }
+  }
   url = `http://127.0.0.1:${server.address().port}`;
 });
 test.afterEach(async () => {

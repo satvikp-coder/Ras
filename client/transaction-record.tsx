@@ -19,17 +19,27 @@ export function TransactionRecord({ record }: { record: Row }) {
               {String(purchase.component_id)} —{" "}
               {String(purchase.component_name)}
             </dd>
-            <dt>Quantity</dt>
+            <dt>Originally purchased quantity</dt>
             <dd>{String(purchase.quantity)}</dd>
+            <dt>Returned quantity</dt>
+            <dd>{String(purchase.refunded_quantity ?? 0)}</dd>
+            <dt>Quantity kept after returns</dt>
+            <dd>{String(purchase.net_quantity ?? purchase.quantity)}</dd>
+            <dt>Refund credited</dt>
+            <dd>{String(purchase.refunded_total ?? 0)} RAS Bolts</dd>
             <dt>Original unit price</dt>
             <dd>{String(purchase.unit_price)} RAS Bolts</dd>
-            <dt>Total</dt>
+            <dt>Original purchase total</dt>
             <dd>{String(purchase.total)} RAS Bolts</dd>
-            <dt>Balance before / after</dt>
+            <dt>Net purchase cost after returns</dt>
+            <dd>{String(purchase.net_total ?? purchase.total)} RAS Bolts</dd>
+            <dt>Original purchase balance before / after</dt>
             <dd>
               {String(purchase.balance_before)} /{" "}
               {String(purchase.balance_after)} RAS Bolts
             </dd>
+            <dt>Current team balance</dt>
+            <dd>{String(purchase.current_balance)} RAS Bolts</dd>
           </dl>
         </section>
       )}

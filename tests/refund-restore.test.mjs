@@ -2,7 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { Store } from "../server/store.mjs";
-import { summary } from "../server/queries.mjs";
+import {
+  summary,
+  history,
+  purchaseSummary,
+  components,
+} from "../server/queries.mjs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,6 +66,21 @@ test("partial refunds preserve original price, holdings and auditable reversal",
   assert.equal(store.stock("MOTOR", "T01"), 1);
   assert.equal(store.teamDetails("T01").spent, 10);
   assert.equal(summary(store).spent, 10);
+  const displayed = history(store, "purchases").rows.find(
+    (row) => row.id === purchaseRow.id,
+  );
+  assert.equal(displayed.quantity, 2);
+  assert.equal(displayed.refunded_quantity, 1);
+  assert.equal(displayed.net_quantity, 1);
+  assert.equal(displayed.refunded_total, 10);
+  assert.equal(displayed.net_total, 10);
+  assert.equal(displayed.current_balance, 90);
+  assert.equal(
+    components(store).find((component) => component.id === "MOTOR")
+      .purchased_quantity,
+    1,
+  );
+  assert.equal(purchaseSummary(store, purchaseRow).net_quantity, 1);
   assert.equal(store.refund(admin, input).id, refund.id);
   assert.throws(
     () =>
@@ -82,6 +102,8 @@ test("partial refunds preserve original price, holdings and auditable reversal",
     requestKey: randomUUID(),
   });
   assert.equal(store.balance("T01"), 80);
+  assert.equal(purchaseSummary(store, purchaseRow).net_quantity, 2);
+  assert.equal(purchaseSummary(store, purchaseRow).refunded_total, 0);
   assert.equal(store.stock("MOTOR"), 8);
   store.void(admin, {
     transactionId: p.id,

@@ -18,6 +18,7 @@ import {
   history,
   auditRows,
   summary,
+  purchaseSummary,
 } from "./queries.mjs";
 import { workbook, csv } from "./export.mjs";
 
@@ -303,9 +304,10 @@ export function createApp(store, { devOrigin = null } = {}) {
     res.json({
       ...t,
       trade,
-      purchase:
-        store.get("SELECT * FROM purchases WHERE transaction_id=?", t.id) ??
-        null,
+      purchase: purchaseSummary(
+        store,
+        store.get("SELECT * FROM purchases WHERE transaction_id=?", t.id),
+      ),
       refund:
         store.get("SELECT * FROM refunds WHERE transaction_id=?", t.id) ?? null,
       ledger: store.all(

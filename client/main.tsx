@@ -191,6 +191,7 @@ function App() {
           setData(next);
           setTimerReceived(Date.now());
           setError("");
+          setRevision((r) => r + 1);
         }
       } catch (e) {
         if (alive) setError((e as Error).message);
@@ -1506,7 +1507,7 @@ function App() {
         <dl>
           <dt>Initial shop quantity</dt>
           <dd>{selectedComponent.initial_quantity}</dd>
-          <dt>Purchased / refunded</dt>
+          <dt>Purchased (net) / returned</dt>
           <dd>
             {selectedComponent.purchased_quantity} /{" "}
             {selectedComponent.refunded_quantity}

@@ -16,6 +16,30 @@ function validateFilters(filters) {
     )
       throw new AppError(`Invalid ${key}.`);
 }
+export function purchaseSummary(store, purchase) {
+  if (!purchase) return null;
+  const returned = store.get(
+    "SELECT COALESCE(SUM(r.quantity),0) refunded_quantity,COALESCE(SUM(r.total),0) refunded_total FROM refunds r JOIN transactions t ON t.id=r.transaction_id WHERE r.purchase_id=? AND t.status='COMPLETED'",
+    purchase.id,
+  );
+  const status =
+    purchase.status ??
+    store.get(
+      "SELECT status FROM transactions WHERE id=?",
+      purchase.transaction_id,
+    )?.status;
+  return {
+    ...purchase,
+    ...returned,
+    net_quantity:
+      status === "COMPLETED"
+        ? purchase.quantity - returned.refunded_quantity
+        : 0,
+    net_total:
+      status === "COMPLETED" ? purchase.total - returned.refunded_total : 0,
+    current_balance: store.balance(purchase.team_id),
+  };
+}
 export function teams(store, search = "") {
   const term = `%${search}%`;
   return store
@@ -72,6 +96,11 @@ export function components(store, search = "") {
         "SELECT COALESCE(SUM(i.quantity),0) n FROM trade_items i JOIN trades r ON r.id=i.trade_id JOIN transactions t ON t.id=r.transaction_id WHERE i.component_id=? AND t.status='COMPLETED'",
         c.id,
       ).n,
+    }))
+    .map((component) => ({
+      ...component,
+      purchased_quantity:
+        component.purchased_quantity - component.refunded_quantity,
     }));
 }
 const sources = {
@@ -196,6 +225,13 @@ export function history(store, kind, filters = {}, unlimited = false) {
         "SELECT * FROM trade_items WHERE trade_id=?",
         row.id,
       );
+  if (kind === "purchases")
+    return {
+      rows: rows.map((row) => purchaseSummary(store, row)),
+      total: count,
+      page,
+      pageSize: limit,
+    };
   return { rows, total: count, page, pageSize: limit };
 }
 export function auditRows(store, filters = {}, unlimited = false) {

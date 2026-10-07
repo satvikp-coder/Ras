@@ -85,6 +85,8 @@ To stop, press **Ctrl+C** in the server terminal. Restart with `npm start` or `n
 
 ExcelJS generates formatted workbooks with frozen headers, filters and readable column widths. It replaces SheetJS here to support styling and avoid relying on an outdated npm `xlsx` release. Its UUID dependency is overridden to a patched compatible version; dependency auditing and workbook tests cover the installed tree.
 
+Purchase history shows quantities kept, original quantities, returned quantities, refund credit and net cost. Purchase details distinguish the original balance snapshot from the current team balance. Component purchased quantities are net of completed returns, and Excel/CSV include the original and net figures. History refreshes automatically when the server is polled, including refunds recorded by another operator. Original purchases remain in the audit trail.
+
 The backend is readable native JavaScript modules with centralized validation and transaction logic in `server/store.mjs`. The frontend uses TypeScript interfaces; business decisions remain on the server. See [database design](docs/DATABASE.md).
 
 ## Database and configuration

@@ -16,8 +16,11 @@ const columns: Record<string, Column[]> = {
     { key: "transaction_ref", label: "Transaction" },
     { key: "team_id", label: "Team" },
     { key: "component_name", label: "Component" },
-    { key: "quantity", label: "Qty" },
-    { key: "total", label: "RAS Bolts" },
+    { key: "net_quantity", label: "Qty kept" },
+    { key: "quantity", label: "Originally bought" },
+    { key: "refunded_quantity", label: "Returned" },
+    { key: "refunded_total", label: "Credit refunded" },
+    { key: "net_total", label: "Net RAS Bolts" },
     ...common,
   ],
   trades: [
